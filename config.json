@@ -1,0 +1,60 @@
+{
+  "model_type": "genatator_pipeline",
+  "architectures": [
+    "GenatatorPipelineModel"
+  ],
+  "auto_map": {
+    "AutoConfig": "configuration_genatator_pipeline.GenatatorPipelineConfig",
+    "AutoModel": "modeling_genatator_pipeline.GenatatorPipelineModel"
+  },
+  "custom_pipelines": {
+    "genatator-pipeline": {
+      "impl": "genatator_pipeline.GenatatorPipeline",
+      "pt": [
+        "AutoModel"
+      ]
+    }
+  },
+  "edge_model_path": "shmelev/genatator-moderngena-base-multispecies-edge-model",
+  "region_model_path": "shmelev/genatator-moderngena-base-multispecies-region-model",
+  "transcript_type_model_path": "shmelev/genatator-caduceus-ps-multispecies-transcript-type",
+  "segmentation_model_path": "shmelev/genatator-caduceus-ps-multispecies-segmentation",
+  "edge_context_length": 1024,
+  "region_context_length": 8192,
+  "transcript_type_context_length": 250000,
+  "segmentation_context_length": 250000,
+  "edge_context_fraction": 0.5,
+  "region_context_fraction": 0.5,
+  "gene_finding_use_reverse_complement": true,
+  "transcript_type_use_reverse_complement": true,
+  "segmentation_use_reverse_complement": true,
+  "lp_frac": 0.05,
+  "pk_prom": 0.1,
+  "pk_dist": 50,
+  "pk_height": null,
+  "interval_window_size": 2000000,
+  "prob_threshold": 0.5,
+  "zero_fraction_drop_threshold": 0.01,
+  "transcript_type_threshold": 0.5,
+  "splice_filter": true,
+  "use_cds_heuristic": true,
+  "shift": null,
+  "torch_dtype": "float32",
+  "edge_average_token_length": 9.0,
+  "region_average_token_length": 9.0,
+  "edge_max_genomic_chunk_ratio": 1.5,
+  "region_max_genomic_chunk_ratio": 1.5,
+  "edge_drop_last": false,
+  "region_drop_last": false,
+  "edge_gap_token_id": 5,
+  "region_gap_token_id": 5,
+  "max_pairs_per_seed": 10,
+  "save_intermediate_files": false,
+  "intermediate_output_dir": null,
+  "pairing_progress_every": 1000,
+  "chunk_log_every": 1000,
+  "edge_apply_sigmoid": false,
+  "region_apply_sigmoid": false,
+  "transcript_type_apply_sigmoid": true,
+  "segmentation_apply_sigmoid": true
+}
