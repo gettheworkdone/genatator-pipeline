@@ -239,75 +239,31 @@ conda activate genatator_pipeline
 
 The written GFF file contains one `gene` feature for each predicted gene locus and one transcript feature for each predicted transcript. Exons and introns are derived from the segmentation stage. CDS features are emitted only for transcripts classified as `mRNA`. The attribute field of each transcript includes `lncRNA_probability`, which stores the score produced by the transcript-type model.
 
-### How transcripts are assigned to the same gene
-
-Transcripts are grouped into the same gene if all of the following are true:
-
-* same chromosome (`chrom`)
-* same strand (`+` / `-`)
-* same transcript type (`mRNA` or `lnc_RNA`)
-* genomic overlap with the current gene span (`transcript.start <= current_gene.end`)
-
-If any of these checks fails, a new gene is started.
-
 ## Docker deployment
 
-All Docker assets are stored in `docker/`.
+All Docker assets are in `docker/`.
 
-### Build image
-
+Build:
 ```bash
 docker build -f docker/Dockerfile -t genatator-pipeline:latest .
 ```
 
-### Run container
-
+Run:
 ```bash
-docker run --gpus all --rm -p 3000:3000 -v "$(pwd)":/data genatator-pipeline:latest
+docker run --gpus all --rm -p 3000:3000 -v "$(pwd)":/generated genatator-pipeline:latest
 ```
 
-### Call Flask API
-
-The container exposes `POST /api/genatator-pipeline/upload` (and keeps `POST /run` for backward compatibility) and expects:
-
-* multipart field `file` — input FASTA file (optional if `dna` is provided)
-* form field `dna` — FASTA text or plain DNA sequence text (optional if `file` is provided)
-
-The server writes output files into `/generated/genatator-pipeline/` inside the container and returns a generated path.
+API:
+- `POST /api/genatator-pipeline/upload`
+- input: multipart `file` (FASTA) **or** form `dna`
+- output JSON fields: `fasta_file`, `fai_file`, `gff_file`, `archive`
 
 Example:
-
 ```bash
-curl -X POST "http://localhost:3000/api/genatator-pipeline/upload" \
-  -F "file=@/data/genome.fasta"
+curl -X POST "http://localhost:3000/api/genatator-pipeline/upload" -F "file=@genome.fasta"
 ```
-
-Example with DNA text form:
-
-```bash
-curl -X POST "http://localhost:3000/api/genatator-pipeline/upload" \
-  -F "dna=>seq1\nATGCGTATGCGT"
-```
-
-Response example:
-
-```json
-{"gff_file":"/generated/genatator-pipeline/request_2026-04-07_123456.gff"}
-```
-
-The container startup script installs dependencies in this strict order inside Conda:
-
-1. Core Conda packages from `docker/conda-core.yml` (matching the pinned CUDA/compiler/system package set)
-2. PyTorch CUDA 12.1 wheels (`torch`, `torchvision`, `torchaudio`)
-3. `causal-conv1d` (`--no-build-isolation`)
-4. `mamba-ssm` (`--no-build-isolation`)
-<<<<<<< codex/add-docker-support-and-pipeline-enhancements-vkc6fd
 5. Flash-attn build prerequisites (`packaging`, `ninja`, `psutil`)
 6. `flash-attn`
 7. Remaining Python dependencies and local pipeline package
-=======
-5. `flash-attn`
-6. Remaining Python dependencies and local pipeline package
->>>>>>> main
 
 For CUDA build-time packages, startup sets `CUDA_HOME` to the Conda environment prefix and links `/usr/local/cuda` to that prefix before installing `causal-conv1d` / `mamba-ssm` / `flash-attn`.
