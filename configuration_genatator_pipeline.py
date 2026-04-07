@@ -50,6 +50,9 @@ class GenatatorPipelineConfig(PretrainedConfig):
         zero_fraction_drop_threshold: float = 0.01,
         transcript_type_threshold: float = 0.5,
         splice_filter: bool = True,
+        deduplicate: bool = True,
+        intronic_filtering: bool = False,
+        keep_longest_terminal_variant: bool = False,
         use_cds_heuristic: bool = True,
         save_intermediate_files: bool = False,
         intermediate_output_dir: Optional[str] = None,
@@ -140,6 +143,9 @@ class GenatatorPipelineConfig(PretrainedConfig):
         self.zero_fraction_drop_threshold = float(zero_fraction_drop_threshold)
         self.transcript_type_threshold = float(transcript_type_threshold)
         self.splice_filter = bool(splice_filter)
+        self.deduplicate = bool(deduplicate)
+        self.intronic_filtering = bool(intronic_filtering)
+        self.keep_longest_terminal_variant = bool(keep_longest_terminal_variant)
         self.use_cds_heuristic = bool(use_cds_heuristic)
         self.save_intermediate_files = bool(save_intermediate_files)
         self.intermediate_output_dir = None if intermediate_output_dir in {None, ""} else str(intermediate_output_dir)
@@ -238,6 +244,9 @@ class GenatatorPipelineConfig(PretrainedConfig):
             "zero_fraction_drop_threshold": self.zero_fraction_drop_threshold,
             "transcript_type_threshold": self.transcript_type_threshold,
             "splice_filter": self.splice_filter,
+            "deduplicate": self.deduplicate,
+            "intronic_filtering": self.intronic_filtering,
+            "keep_longest_terminal_variant": self.keep_longest_terminal_variant,
             "use_cds_heuristic": self.use_cds_heuristic,
             "save_intermediate_files": self.save_intermediate_files,
             "intermediate_output_dir": self.intermediate_output_dir,
