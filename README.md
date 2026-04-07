@@ -301,8 +301,13 @@ The container startup script installs dependencies in this strict order inside C
 2. PyTorch CUDA 12.1 wheels (`torch`, `torchvision`, `torchaudio`)
 3. `causal-conv1d` (`--no-build-isolation`)
 4. `mamba-ssm` (`--no-build-isolation`)
+<<<<<<< codex/add-docker-support-and-pipeline-enhancements-vkc6fd
 5. Flash-attn build prerequisites (`packaging`, `ninja`, `psutil`)
 6. `flash-attn`
 7. Remaining Python dependencies and local pipeline package
+=======
+5. `flash-attn`
+6. Remaining Python dependencies and local pipeline package
+>>>>>>> main
 
 For CUDA build-time packages, startup sets `CUDA_HOME` to the Conda environment prefix and links `/usr/local/cuda` to that prefix before installing `causal-conv1d` / `mamba-ssm` / `flash-attn`.
