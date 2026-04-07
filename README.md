@@ -232,3 +232,27 @@ conda activate genatator_pipeline
 ## Output annotation
 
 The written GFF file contains one `gene` feature for each predicted gene locus and one transcript feature for each predicted transcript. Exons and introns are derived from the segmentation stage. CDS features are emitted only for transcripts classified as `mRNA`. The attribute field of each transcript includes `lncRNA_probability`, which stores the score produced by the transcript-type model.
+
+## Docker deployment
+
+All Docker assets are in `docker/`.
+
+Build:
+```bash
+docker build -f docker/Dockerfile -t genatator-pipeline:latest .
+```
+
+Run:
+```bash
+docker run --gpus all --rm -p 3000:3000 -v "$(pwd)":/generated genatator-pipeline:latest
+```
+
+API:
+- `POST /api/genatator-pipeline/upload`
+- input: multipart `file` (FASTA) **or** form `dna`
+- output JSON fields: `fasta_file`, `fai_file`, `gff_file`, `archive`
+
+Example:
+```bash
+curl -X POST "http://localhost:3000/api/genatator-pipeline/upload" -F "file=@genome.fasta"
+```
