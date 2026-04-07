@@ -86,6 +86,9 @@ output_path = pipe(
     zero_fraction_drop_threshold=0.01,
     transcript_type_threshold=0.5,
     splice_filter=True,
+    deduplicate=True,
+    intronic_filtering=False,
+    keep_longest_terminal_variant=False,
     use_cds_heuristic=True,
     save_intermediate_files=False,
     intermediate_output_dir=None,
@@ -152,6 +155,9 @@ All four stage models run with **batch size 1**.
 
 * `transcript_type_threshold` — Threshold applied to the predicted `lnc_RNA` probability. Intervals at or above this value are labeled `lnc_RNA`; intervals below it are labeled `mRNA`.
 * `splice_filter` — Enables splice-motif filtering and terminal splice-boundary correction for exon and CDS segments.
+* `deduplicate` — Removes duplicate transcript predictions before GFF export. Duplicates are transcripts with identical interval boundaries and identical internal annotation structure (exons, introns, CDS). Default: `True`.
+* `intronic_filtering` — Drops an interval prediction when the first or the last nucleotide of the final segmentation argmax is classified as `intron`. This check is applied after forward/RC averaging (if enabled). Default: `False`.
+* `keep_longest_terminal_variant` — For transcripts grouped under the same gene, keeps only the longest transcript among variants that share the same internal exon structure and differ only by first-exon start and/or last-exon end. Default: `False`.
 * `use_cds_heuristic` — Replaces the predicted CDS with the exon-derived CDS heuristic used in the accompanying benchmark code. This option affects `mRNA` transcripts only.
 
 ### General inference parameters
@@ -232,3 +238,54 @@ conda activate genatator_pipeline
 ## Output annotation
 
 The written GFF file contains one `gene` feature for each predicted gene locus and one transcript feature for each predicted transcript. Exons and introns are derived from the segmentation stage. CDS features are emitted only for transcripts classified as `mRNA`. The attribute field of each transcript includes `lncRNA_probability`, which stores the score produced by the transcript-type model.
+
+### How transcripts are assigned to the same gene
+
+Transcripts are grouped into the same gene if all of the following are true:
+
+* same chromosome (`chrom`)
+* same strand (`+` / `-`)
+* same transcript type (`mRNA` or `lnc_RNA`)
+* genomic overlap with the current gene span (`transcript.start <= current_gene.end`)
+
+If any of these checks fails, a new gene is started.
+
+## Docker deployment
+
+All Docker assets are stored in `docker/`.
+
+### Build image
+
+```bash
+docker build -f docker/Dockerfile -t genatator-pipeline:latest .
+```
+
+### Run container
+
+```bash
+docker run --gpus all --rm -p 3000:3000 -v "$(pwd)":/data genatator-pipeline:latest
+```
+
+### Call Flask API
+
+The container exposes `POST /run` and expects:
+
+* multipart field `file` — input FASTA file
+* form field `output_gff_path` — output path for the produced GFF file
+
+Example:
+
+```bash
+curl -X POST "http://localhost:3000/run" \
+  -F "file=@/data/genome.fasta" \
+  -F "output_gff_path=/data/genome.gff"
+```
+
+The container startup script installs dependencies in this strict order inside Conda:
+
+1. CUDA base image/runtime
+2. PyTorch CUDA 12.1 wheels (`torch`, `torchvision`, `torchaudio`)
+3. `causal-conv1d`
+4. `mamba-ssm`
+5. `flash-attn`
+6. Remaining Python dependencies and local pipeline package

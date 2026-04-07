@@ -1,0 +1,8 @@
+flask==3.1.2
+transformers==4.57.6
+biopython==1.86
+numpy==1.26.4
+scipy==1.17.1
+tqdm==4.67.3
+h5py==3.15.1
+requests==2.28.1
