@@ -262,8 +262,3 @@ Example:
 ```bash
 curl -X POST "http://localhost:3000/api/genatator-pipeline/upload" -F "file=@genome.fasta"
 ```
-5. Flash-attn build prerequisites (`packaging`, `ninja`, `psutil`)
-6. `flash-attn`
-7. Remaining Python dependencies and local pipeline package
-
-For CUDA build-time packages, startup sets `CUDA_HOME` to the Conda environment prefix and links `/usr/local/cuda` to that prefix before installing `causal-conv1d` / `mamba-ssm` / `flash-attn`.

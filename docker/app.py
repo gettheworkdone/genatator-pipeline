@@ -18,6 +18,7 @@ pipe = pipeline(
     model="shmelev/genatator-pipeline",
     trust_remote_code=True,
     device=0,
+    dtype="float32",
 )
 
 
