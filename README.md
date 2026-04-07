@@ -297,9 +297,11 @@ Response example:
 
 The container startup script installs dependencies in this strict order inside Conda:
 
-1. CUDA base image/runtime
+1. Core Conda packages from `docker/conda-core.yml` (matching the pinned CUDA/compiler/system package set)
 2. PyTorch CUDA 12.1 wheels (`torch`, `torchvision`, `torchaudio`)
 3. `causal-conv1d` (`--no-build-isolation`)
 4. `mamba-ssm` (`--no-build-isolation`)
 5. `flash-attn`
 6. Remaining Python dependencies and local pipeline package
+
+For CUDA build-time packages, startup sets `CUDA_HOME` to the Conda environment prefix and links `/usr/local/cuda` to that prefix before installing `causal-conv1d` / `mamba-ssm` / `flash-attn`.
