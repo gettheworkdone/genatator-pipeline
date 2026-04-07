@@ -268,17 +268,31 @@ docker run --gpus all --rm -p 3000:3000 -v "$(pwd)":/data genatator-pipeline:lat
 
 ### Call Flask API
 
-The container exposes `POST /run` and expects:
+The container exposes `POST /api/genatator-pipeline/upload` (and keeps `POST /run` for backward compatibility) and expects:
 
-* multipart field `file` — input FASTA file
-* form field `output_gff_path` — output path for the produced GFF file
+* multipart field `file` — input FASTA file (optional if `dna` is provided)
+* form field `dna` — FASTA text or plain DNA sequence text (optional if `file` is provided)
+
+The server writes output files into `/generated/genatator-pipeline/` inside the container and returns a generated path.
 
 Example:
 
 ```bash
-curl -X POST "http://localhost:3000/run" \
-  -F "file=@/data/genome.fasta" \
-  -F "output_gff_path=/data/genome.gff"
+curl -X POST "http://localhost:3000/api/genatator-pipeline/upload" \
+  -F "file=@/data/genome.fasta"
+```
+
+Example with DNA text form:
+
+```bash
+curl -X POST "http://localhost:3000/api/genatator-pipeline/upload" \
+  -F "dna=>seq1\nATGCGTATGCGT"
+```
+
+Response example:
+
+```json
+{"gff_file":"/generated/genatator-pipeline/request_2026-04-07_123456.gff"}
 ```
 
 The container startup script installs dependencies in this strict order inside Conda:
