@@ -299,7 +299,7 @@ The container startup script installs dependencies in this strict order inside C
 
 1. CUDA base image/runtime
 2. PyTorch CUDA 12.1 wheels (`torch`, `torchvision`, `torchaudio`)
-3. `causal-conv1d`
-4. `mamba-ssm`
+3. `causal-conv1d` (`--no-build-isolation`)
+4. `mamba-ssm` (`--no-build-isolation`)
 5. `flash-attn`
 6. Remaining Python dependencies and local pipeline package

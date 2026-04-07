@@ -22,8 +22,8 @@ install_env() {
   conda create -n "$ENV_NAME" python=3.11
 
   conda run --no-capture-output -n "$ENV_NAME" pip install torch==2.2.2+cu121 torchvision==0.17.2+cu121 torchaudio==2.2.2+cu121 --index-url https://download.pytorch.org/whl/cu121
-  conda run --no-capture-output -n "$ENV_NAME" pip install causal-conv1d==1.4.0
-  conda run --no-capture-output -n "$ENV_NAME" pip install mamba-ssm==2.2.2
+  conda run --no-capture-output -n "$ENV_NAME" pip install causal-conv1d==1.4.0 --no-build-isolation
+  conda run --no-capture-output -n "$ENV_NAME" pip install mamba-ssm==2.2.2 --no-build-isolation
   conda run --no-capture-output -n "$ENV_NAME" pip install flash-attn==2.6.3 --no-build-isolation
   conda run --no-capture-output -n "$ENV_NAME" pip install -r /app/docker/requirements.txt
   conda run --no-capture-output -n "$ENV_NAME" pip install -e /app
