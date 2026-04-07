@@ -56,5 +56,8 @@
   "edge_apply_sigmoid": false,
   "region_apply_sigmoid": false,
   "transcript_type_apply_sigmoid": true,
-  "segmentation_apply_sigmoid": true
+  "segmentation_apply_sigmoid": true,
+  "deduplicate": true,
+  "intronic_filtering": false,
+  "keep_longest_terminal_variant": false
 }
