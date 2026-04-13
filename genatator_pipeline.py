@@ -42,6 +42,7 @@ try:
         write_intervals_to_bed,
     )
     from .gff_utils import (
+        group_transcripts_into_genes,
         infer_cds_with_benchmark_heuristic,
         parse_fasta_records,
         resolve_seqid_and_offset,
@@ -69,6 +70,7 @@ except ImportError:
         write_intervals_to_bed,
     )
     from gff_utils import (
+        group_transcripts_into_genes,
         infer_cds_with_benchmark_heuristic,
         parse_fasta_records,
         resolve_seqid_and_offset,
@@ -349,6 +351,7 @@ class GenatatorPipeline(Pipeline):
             ["Intragenic-"],
             default=5,
         )
+        self.segmentation_idx_intron = _intron_label_index(self.segmentation_label_names)
 
     def _sanitize_parameters(self, **kwargs):
         preprocess_kwargs = {}
@@ -621,6 +624,21 @@ class GenatatorPipeline(Pipeline):
                     is_cds_binary=False,
                 )
 
+                if bool(params.get("intronic_filtering", False)):
+                    labels = segmentation_result.labels_argmax
+                    if len(labels) > 0 and (
+                        int(labels[0]) == self.segmentation_idx_intron
+                        or int(labels[-1]) == self.segmentation_idx_intron
+                    ):
+                        self.logger.info(
+                            "Skipping interval %s:%d-%d (%s): intronic_filtering dropped prediction.",
+                            seqid,
+                            interval.start,
+                            interval.end,
+                            interval.strand,
+                        )
+                        continue
+
                 exons = segmentation_result.exon_segments
                 if interval_idx <= 10 or interval_idx % 100 == 0:
                     self.logger.info(
@@ -704,11 +722,20 @@ class GenatatorPipeline(Pipeline):
         return {
             "fasta_path": fasta_path,
             "predictions": predictions,
+            "runtime_params": params,
         }
 
     def postprocess(self, model_outputs: dict[str, Any], output_gff_path: Optional[str] = None) -> str:
         fasta_path = model_outputs["fasta_path"]
         predictions = model_outputs["predictions"]
+        params = dict(self.runtime_defaults)
+        params.update(model_outputs.get("runtime_params", {}))
+
+        if bool(params.get("keep_longest_terminal_variant", False)):
+            predictions = _filter_longest_terminal_variants(predictions)
+
+        if bool(params.get("deduplicate", True)):
+            predictions = _deduplicate_predictions(predictions)
 
         if output_gff_path is None:
             output_gff_path = str(Path(fasta_path).with_suffix(".gff"))

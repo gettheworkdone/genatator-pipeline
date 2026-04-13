@@ -86,6 +86,9 @@ output_path = pipe(
     zero_fraction_drop_threshold=0.01,
     transcript_type_threshold=0.5,
     splice_filter=True,
+    deduplicate=True,
+    intronic_filtering=False,
+    keep_longest_terminal_variant=False,
     use_cds_heuristic=True,
     save_intermediate_files=False,
     intermediate_output_dir=None,
@@ -152,6 +155,9 @@ All four stage models run with **batch size 1**.
 
 * `transcript_type_threshold` — Threshold applied to the predicted `lnc_RNA` probability. Intervals at or above this value are labeled `lnc_RNA`; intervals below it are labeled `mRNA`.
 * `splice_filter` — Enables splice-motif filtering and terminal splice-boundary correction for exon and CDS segments.
+* `deduplicate` — Removes duplicate transcript predictions before GFF export. Duplicates are transcripts with identical interval boundaries and identical internal annotation structure (exons, introns, CDS). Default: `True`.
+* `intronic_filtering` — Drops an interval prediction when the first or the last nucleotide of the final segmentation argmax is classified as `intron`. This check is applied after forward/RC averaging (if enabled). Default: `False`.
+* `keep_longest_terminal_variant` — For transcripts grouped under the same gene, keeps only the longest transcript among variants that share the same internal exon structure and differ only by first-exon start and/or last-exon end. Default: `False`.
 * `use_cds_heuristic` — Replaces the predicted CDS with the exon-derived CDS heuristic used in the accompanying benchmark code. This option affects `mRNA` transcripts only.
 
 ### General inference parameters
