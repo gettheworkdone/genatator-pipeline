@@ -262,3 +262,20 @@ Example:
 ```bash
 curl -X POST "http://localhost:3000/api/genatator-pipeline/upload" -F "file=@genome.fasta"
 ```
+
+## Additional transcript confidence and coloring options
+
+- `transcript_coloring_thresholds`:
+  - `"auto"` (default): compute min/max transcript segmentation confidence and split range into 4 equal bins
+  - custom list of exactly 4 thresholds: use these bins instead of auto mode
+
+Color map is hardcoded:
+- lowest quartile: `#66cc66` (light green)
+- second quartile: `#006400` (dark green)
+- third quartile: `#dcdcff` (light blue)
+- top quartile: `#0c0c78` (dark blue)
+
+GFF output now includes:
+- transcript attributes: `lncRNA_probability`, `mRNA_probability`, `exon_segmentation_confidence`, `cds_segmentation_confidence`, `segmentation_confidence`, `color`
+- exon and CDS attributes: `mean_probability`
+- intron features are not emitted in output GFF

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import inspect
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterable, Iterator, Optional, Sequence
 
 import numpy as np
@@ -52,6 +52,11 @@ class TranscriptPrediction:
     introns: list[tuple[int, int]]
     cds: list[tuple[int, int]]
     sequence_name: str
+    exon_mean_probs: list[float] = field(default_factory=list)
+    cds_mean_probs: list[float] = field(default_factory=list)
+    exon_confidence_total: float = 0.0
+    cds_confidence_total: float = 0.0
+    segmentation_confidence_total: float = 0.0
 
 
 def batched(items: Sequence, batch_size: int) -> Iterator[Sequence]:

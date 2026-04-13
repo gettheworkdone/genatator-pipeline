@@ -165,64 +165,26 @@ def _safe_record_stem(name: str) -> str:
     return "".join(allowed)
 
 
-def _intron_label_index(label_names: list[str]) -> int:
-    return _label_index(label_names, ["intron"])
-
-
-def _deduplicate_predictions(predictions: list[TranscriptPrediction]) -> list[TranscriptPrediction]:
-    seen: set[tuple[Any, ...]] = set()
-    unique: list[TranscriptPrediction] = []
-    for pred in predictions:
-        key = (
-            pred.chrom,
-            pred.strand,
-            pred.transcript_type,
-            int(pred.start),
-            int(pred.end),
-            tuple(sorted(pred.exons)),
-            tuple(sorted(pred.introns)),
-            tuple(sorted(pred.cds)),
-        )
-        if key in seen:
+def _segment_mean_probabilities(
+    segments: list[tuple[int, int]],
+    track: np.ndarray,
+    interval_start: int,
+) -> list[float]:
+    if len(track) == 0:
+        return [0.0 for _ in segments]
+    probs: list[float] = []
+    for start, end in segments:
+        rel_start = max(0, int(start) - int(interval_start))
+        rel_end = min(len(track), int(end) - int(interval_start))
+        if rel_end <= rel_start:
+            probs.append(0.0)
             continue
-        seen.add(key)
-        unique.append(pred)
-    return unique
+        probs.append(float(np.mean(track[rel_start:rel_end])))
+    return probs
 
 
-def _internal_structure_key(pred: TranscriptPrediction) -> tuple[Any, ...]:
-    exons = sorted(pred.exons)
-    if not exons:
-        return ("empty",)
-    if len(exons) == 1:
-        return ("single_exon",)
-    return (
-        "multi_exon",
-        len(exons),
-        int(exons[0][1]),
-        int(exons[-1][0]),
-        tuple((int(s), int(e)) for s, e in exons[1:-1]),
-    )
-
-
-def _filter_longest_terminal_variants(predictions: list[TranscriptPrediction]) -> list[TranscriptPrediction]:
-    kept: list[TranscriptPrediction] = []
-    for group in group_transcripts_into_genes(predictions):
-        best_by_key: dict[tuple[Any, ...], TranscriptPrediction] = {}
-        for pred in group.transcripts:
-            key = _internal_structure_key(pred)
-            current = best_by_key.get(key)
-            if current is None:
-                best_by_key[key] = pred
-                continue
-            pred_span = int(pred.end) - int(pred.start)
-            current_span = int(current.end) - int(current.start)
-            if pred_span > current_span or (
-                pred_span == current_span and float(pred.transcript_type_score) > float(current.transcript_type_score)
-            ):
-                best_by_key[key] = pred
-        kept.extend(best_by_key.values())
-    return sorted(kept, key=lambda p: (p.chrom, p.strand, p.transcript_type, p.start, p.end))
+def _mean_or_zero(values: list[float]) -> float:
+    return float(np.mean(values)) if values else 0.0
 
 
 class GenatatorPipeline(Pipeline):
@@ -372,6 +334,8 @@ class GenatatorPipeline(Pipeline):
         )
         self.logger.info("Segmentation label names: %s", self.segmentation_label_names)
         self.logger.info("Submodel dtype resolved to %s", self.submodel_dtype)
+        self.segmentation_idx_exon = _label_index(self.segmentation_label_names, ["exon"])
+        self.segmentation_idx_cds = _label_index(self.segmentation_label_names, ["CDS", "cds"])
 
         self.edge_idx_tss_plus = _label_index(self.edge_label_names, ["TSS+"], default=0)
         self.edge_idx_tss_minus = _label_index(self.edge_label_names, ["TSS-"], default=1)
@@ -706,6 +670,22 @@ class GenatatorPipeline(Pipeline):
                 else:
                     cds = []
 
+                exon_mean_probs = _segment_mean_probabilities(
+                    exons,
+                    segmentation_result.tracks[self.segmentation_idx_exon],
+                    interval.start,
+                )
+                cds_mean_probs = _segment_mean_probabilities(
+                    cds,
+                    segmentation_result.tracks[self.segmentation_idx_cds],
+                    interval.start,
+                )
+                exon_confidence_total = _mean_or_zero(exon_mean_probs)
+                cds_confidence_total = _mean_or_zero(cds_mean_probs)
+                segmentation_confidence_total = (
+                    cds_confidence_total if transcript_type == "mRNA" and cds_mean_probs else exon_confidence_total
+                )
+
                 introns = build_introns_from_exons(exons)
 
                 def _shift_segments(segments):
@@ -723,6 +703,11 @@ class GenatatorPipeline(Pipeline):
                         introns=_shift_segments(introns),
                         cds=_shift_segments(cds),
                         sequence_name=record.id,
+                        exon_mean_probs=exon_mean_probs,
+                        cds_mean_probs=cds_mean_probs,
+                        exon_confidence_total=exon_confidence_total,
+                        cds_confidence_total=cds_confidence_total,
+                        segmentation_confidence_total=segmentation_confidence_total,
                     )
                 )
                 if interval_idx <= 10 or interval_idx % 100 == 0:
@@ -759,6 +744,7 @@ class GenatatorPipeline(Pipeline):
             predictions=predictions,
             output_gff_path=output_gff_path,
             source="GENATATOR-PIPELINE",
+            transcript_coloring_thresholds=self.runtime_defaults.get("transcript_coloring_thresholds", "auto"),
         )
         self.logger.info("Wrote %d transcript annotations to %s", len(predictions), output_gff_path)
         return output_gff_path
