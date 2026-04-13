@@ -191,6 +191,26 @@ def _intron_label_index(label_names: list[str]) -> int:
     return _label_index(label_names, ["intron"], default=2)
 
 
+def _deduplicate_predictions(predictions: list[TranscriptPrediction]) -> list[TranscriptPrediction]:
+    seen: set[tuple[Any, ...]] = set()
+    result: list[TranscriptPrediction] = []
+    for pred in predictions:
+        key = (
+            pred.chrom,
+            int(pred.start),
+            int(pred.end),
+            pred.strand,
+            pred.transcript_type,
+            tuple(sorted(pred.exons)),
+            tuple(sorted(pred.cds)),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(pred)
+    return result
+
+
 class GenatatorPipeline(Pipeline):
     """Custom Hugging Face pipeline for ab initio transcript discovery and annotation.
 
@@ -740,6 +760,9 @@ class GenatatorPipeline(Pipeline):
             predictions = _filter_longest_terminal_variants(predictions)
 
         if bool(params.get("deduplicate", True)):
+            predictions = _deduplicate_predictions(predictions)
+
+        if bool(self.runtime_defaults.get("deduplicate", True)):
             predictions = _deduplicate_predictions(predictions)
 
         if output_gff_path is None:
