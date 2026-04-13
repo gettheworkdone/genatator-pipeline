@@ -187,6 +187,10 @@ def _mean_or_zero(values: list[float]) -> float:
     return float(np.mean(values)) if values else 0.0
 
 
+def _intron_label_index(label_names: list[str]) -> int:
+    return _label_index(label_names, ["intron"], default=2)
+
+
 class GenatatorPipeline(Pipeline):
     """Custom Hugging Face pipeline for ab initio transcript discovery and annotation.
 
@@ -336,6 +340,7 @@ class GenatatorPipeline(Pipeline):
         self.logger.info("Submodel dtype resolved to %s", self.submodel_dtype)
         self.segmentation_idx_exon = _label_index(self.segmentation_label_names, ["exon"])
         self.segmentation_idx_cds = _label_index(self.segmentation_label_names, ["CDS", "cds"])
+        self.segmentation_idx_intron = _intron_label_index(self.segmentation_label_names)
 
         self.edge_idx_tss_plus = _label_index(self.edge_label_names, ["TSS+"], default=0)
         self.edge_idx_tss_minus = _label_index(self.edge_label_names, ["TSS-"], default=1)
