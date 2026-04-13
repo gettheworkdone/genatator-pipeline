@@ -56,5 +56,6 @@
   "edge_apply_sigmoid": false,
   "region_apply_sigmoid": false,
   "transcript_type_apply_sigmoid": true,
-  "segmentation_apply_sigmoid": true
+  "segmentation_apply_sigmoid": true,
+  "transcript_coloring_thresholds": "auto"
 }
