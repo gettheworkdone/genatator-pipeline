@@ -163,6 +163,28 @@ def _safe_record_stem(name: str) -> str:
     return "".join(allowed)
 
 
+def _segment_mean_probabilities(
+    segments: list[tuple[int, int]],
+    track: np.ndarray,
+    interval_start: int,
+) -> list[float]:
+    if len(track) == 0:
+        return [0.0 for _ in segments]
+    probs: list[float] = []
+    for start, end in segments:
+        rel_start = max(0, int(start) - int(interval_start))
+        rel_end = min(len(track), int(end) - int(interval_start))
+        if rel_end <= rel_start:
+            probs.append(0.0)
+            continue
+        probs.append(float(np.mean(track[rel_start:rel_end])))
+    return probs
+
+
+def _mean_or_zero(values: list[float]) -> float:
+    return float(np.mean(values)) if values else 0.0
+
+
 class GenatatorPipeline(Pipeline):
     """Custom Hugging Face pipeline for ab initio transcript discovery and annotation.
 
@@ -310,6 +332,8 @@ class GenatatorPipeline(Pipeline):
         )
         self.logger.info("Segmentation label names: %s", self.segmentation_label_names)
         self.logger.info("Submodel dtype resolved to %s", self.submodel_dtype)
+        self.segmentation_idx_exon = _label_index(self.segmentation_label_names, ["exon"])
+        self.segmentation_idx_cds = _label_index(self.segmentation_label_names, ["CDS", "cds"])
 
         self.edge_idx_tss_plus = _label_index(self.edge_label_names, ["TSS+"], default=0)
         self.edge_idx_tss_minus = _label_index(self.edge_label_names, ["TSS-"], default=1)
@@ -628,6 +652,22 @@ class GenatatorPipeline(Pipeline):
                 else:
                     cds = []
 
+                exon_mean_probs = _segment_mean_probabilities(
+                    exons,
+                    segmentation_result.tracks[self.segmentation_idx_exon],
+                    interval.start,
+                )
+                cds_mean_probs = _segment_mean_probabilities(
+                    cds,
+                    segmentation_result.tracks[self.segmentation_idx_cds],
+                    interval.start,
+                )
+                exon_confidence_total = _mean_or_zero(exon_mean_probs)
+                cds_confidence_total = _mean_or_zero(cds_mean_probs)
+                segmentation_confidence_total = (
+                    cds_confidence_total if transcript_type == "mRNA" and cds_mean_probs else exon_confidence_total
+                )
+
                 introns = build_introns_from_exons(exons)
 
                 def _shift_segments(segments):
@@ -645,6 +685,11 @@ class GenatatorPipeline(Pipeline):
                         introns=_shift_segments(introns),
                         cds=_shift_segments(cds),
                         sequence_name=record.id,
+                        exon_mean_probs=exon_mean_probs,
+                        cds_mean_probs=cds_mean_probs,
+                        exon_confidence_total=exon_confidence_total,
+                        cds_confidence_total=cds_confidence_total,
+                        segmentation_confidence_total=segmentation_confidence_total,
                     )
                 )
                 if interval_idx <= 10 or interval_idx % 100 == 0:
@@ -672,6 +717,7 @@ class GenatatorPipeline(Pipeline):
             predictions=predictions,
             output_gff_path=output_gff_path,
             source="GENATATOR-PIPELINE",
+            transcript_coloring_thresholds=self.runtime_defaults.get("transcript_coloring_thresholds", "auto"),
         )
         self.logger.info("Wrote %d transcript annotations to %s", len(predictions), output_gff_path)
         return output_gff_path

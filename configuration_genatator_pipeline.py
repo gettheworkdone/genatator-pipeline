@@ -50,6 +50,7 @@ class GenatatorPipelineConfig(PretrainedConfig):
         zero_fraction_drop_threshold: float = 0.01,
         transcript_type_threshold: float = 0.5,
         splice_filter: bool = True,
+        transcript_coloring_thresholds: str | list[float] = "auto",
         use_cds_heuristic: bool = True,
         save_intermediate_files: bool = False,
         intermediate_output_dir: Optional[str] = None,
@@ -140,6 +141,7 @@ class GenatatorPipelineConfig(PretrainedConfig):
         self.zero_fraction_drop_threshold = float(zero_fraction_drop_threshold)
         self.transcript_type_threshold = float(transcript_type_threshold)
         self.splice_filter = bool(splice_filter)
+        self.transcript_coloring_thresholds = transcript_coloring_thresholds
         self.use_cds_heuristic = bool(use_cds_heuristic)
         self.save_intermediate_files = bool(save_intermediate_files)
         self.intermediate_output_dir = None if intermediate_output_dir in {None, ""} else str(intermediate_output_dir)
@@ -238,6 +240,7 @@ class GenatatorPipelineConfig(PretrainedConfig):
             "zero_fraction_drop_threshold": self.zero_fraction_drop_threshold,
             "transcript_type_threshold": self.transcript_type_threshold,
             "splice_filter": self.splice_filter,
+            "transcript_coloring_thresholds": self.transcript_coloring_thresholds,
             "use_cds_heuristic": self.use_cds_heuristic,
             "save_intermediate_files": self.save_intermediate_files,
             "intermediate_output_dir": self.intermediate_output_dir,
