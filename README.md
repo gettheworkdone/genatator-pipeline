@@ -1,5 +1,6 @@
 ---
 library_name: transformers
+short_description: Ab initio gene annotation pipeline for genomic DNA.
 tags:
   - genomics
   - gene-annotation
