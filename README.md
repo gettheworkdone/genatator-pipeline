@@ -232,3 +232,52 @@ conda activate genatator_pipeline
 ## Output annotation
 
 The written GFF file contains one `gene` feature for each predicted gene locus and one transcript feature for each predicted transcript. Exons and introns are derived from the segmentation stage. CDS features are emitted only for transcripts classified as `mRNA`. The attribute field of each transcript includes `lncRNA_probability`, which stores the score produced by the transcript-type model.
+
+## Docker deployment
+
+All Docker assets are in `docker/`.
+
+Build:
+```bash
+docker build -f docker/Dockerfile -t genatator-pipeline:latest .
+```
+
+Run:
+```bash
+docker run --gpus all --rm -p 3000:3000 -v "$(pwd)":/generated genatator-pipeline:latest
+```
+
+API:
+- `POST /api/genatator-pipeline/upload`
+- input: multipart `file` (FASTA) **or** form `dna`
+- output JSON fields: `fasta_file`, `fai_file`, `gff_file`, `archive`
+
+Example:
+```bash
+curl -X POST "http://localhost:3000/api/genatator-pipeline/upload" -F "file=@genome.fasta"
+```
+
+## Additional transcript confidence and coloring options
+
+- `transcript_coloring_thresholds`:
+  - `"auto"` (default): compute min/max transcript segmentation confidence and split range into 4 equal bins
+  - custom list of exactly 4 thresholds: use these bins instead of auto mode
+
+Color map is hardcoded:
+- lowest quartile: `#66cc66` (light green)
+- second quartile: `#006400` (dark green)
+- third quartile: `#dcdcff` (light blue)
+- top quartile: `#0c0c78` (dark blue)
+
+GFF output now includes:
+- transcript attributes: `lncRNA_probability`, `mRNA_probability`, `exon_segmentation_confidence`, `cds_segmentation_confidence`, `segmentation_confidence`, `color`
+- exon and CDS attributes: `mean_probability`
+- intron features are not emitted in output GFF
+
+Default postprocessing flags:
+- `deduplicate=True`
+- `intronic_filtering=True`
+- `keep_longest_terminal_variant=True`
+- `use_cds_heuristic=True`
+
+Coloring is applied on the **final** transcript set after filtering/heuristics (`intronic_filtering`, `keep_longest_terminal_variant`, `deduplicate`, CDS heuristic effects).
