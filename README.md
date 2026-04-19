@@ -169,6 +169,8 @@ Color map is hardcoded:
 * third quartile: `#dcdcff` (light blue)
 * top quartile: `#0c0c78` (dark blue)
 
+Coloring is applied on the **final** transcript set after filtering/heuristics (`intronic_filtering`, `keep_longest_terminal_variant`, `deduplicate`, CDS heuristic effects).
+
 ### General inference parameters
 
 * `save_intermediate_files` — If `True`, writes gene-finding intermediate artifacts for each FASTA record, including `.npy` tracks, `.bed` interval files, and a compressed `.h5` debug dump when `h5py` is installed.
@@ -290,11 +292,3 @@ Example:
 ```bash
 curl -X POST "http://localhost:3000/api/genatator-pipeline/upload" -F "file=@genome.fasta"
 ```
-
-Default postprocessing flags:
-- `deduplicate=True`
-- `intronic_filtering=True`
-- `keep_longest_terminal_variant=True`
-- `use_cds_heuristic=True`
-
-Coloring is applied on the **final** transcript set after filtering/heuristics (`intronic_filtering`, `keep_longest_terminal_variant`, `deduplicate`, CDS heuristic effects).
