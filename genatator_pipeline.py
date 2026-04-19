@@ -192,23 +192,26 @@ def _intron_label_index(label_names: list[str]) -> int:
 
 
 def _deduplicate_predictions(predictions: list[TranscriptPrediction]) -> list[TranscriptPrediction]:
-    seen: set[tuple[Any, ...]] = set()
-    result: list[TranscriptPrediction] = []
+    best_by_key: dict[tuple[Any, ...], TranscriptPrediction] = {}
     for pred in predictions:
         key = (
             pred.chrom,
             int(pred.start),
             int(pred.end),
             pred.strand,
-            pred.transcript_type,
             tuple(sorted(pred.exons)),
+            tuple(sorted(pred.introns)),
             tuple(sorted(pred.cds)),
         )
-        if key in seen:
+        current = best_by_key.get(key)
+        if current is None:
+            best_by_key[key] = pred
             continue
-        seen.add(key)
-        result.append(pred)
-    return result
+        current_score = (float(current.segmentation_confidence_total), float(current.transcript_type_score))
+        new_score = (float(pred.segmentation_confidence_total), float(pred.transcript_type_score))
+        if new_score > current_score:
+            best_by_key[key] = pred
+    return list(best_by_key.values())
 
 
 class GenatatorPipeline(Pipeline):
@@ -764,6 +767,11 @@ class GenatatorPipeline(Pipeline):
 
         if bool(self.runtime_defaults.get("deduplicate", True)):
             predictions = _deduplicate_predictions(predictions)
+
+        if bool(self.runtime_defaults.get("deduplicate", True)):
+            before = len(predictions)
+            predictions = _deduplicate_predictions(predictions)
+            self.logger.info("Deduplication reduced transcripts from %d to %d", before, len(predictions))
 
         if output_gff_path is None:
             output_gff_path = str(Path(fasta_path).with_suffix(".gff"))
