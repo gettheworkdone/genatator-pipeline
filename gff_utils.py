@@ -243,10 +243,38 @@ def write_predictions_to_gff(
     predictions: Sequence[TranscriptPrediction],
     output_gff_path: str | Path,
     source: str = "GENATATOR-PIPELINE",
+    transcript_coloring_thresholds: str | Sequence[float] = "auto",
 ) -> str:
     output_gff_path = str(output_gff_path)
     Path(output_gff_path).parent.mkdir(parents=True, exist_ok=True)
     groups = group_transcripts_into_genes(predictions)
+    confidence_values = [float(pred.segmentation_confidence_total) for pred in predictions]
+
+    def _resolve_color(confidence: float) -> str:
+        colors = ("#66cc66", "#006400", "#dcdcff", "#0c0c78")
+        if not confidence_values:
+            return colors[1]
+
+        if isinstance(transcript_coloring_thresholds, str) and transcript_coloring_thresholds == "auto":
+            low = min(confidence_values)
+            high = max(confidence_values)
+            if high <= low:
+                thresholds = [low, low, low, high]
+            else:
+                step = (high - low) / 4.0
+                thresholds = [low + step, low + 2 * step, low + 3 * step, high]
+        elif isinstance(transcript_coloring_thresholds, Sequence) and len(transcript_coloring_thresholds) == 4:
+            thresholds = [float(x) for x in transcript_coloring_thresholds]
+        else:
+            raise ValueError("transcript_coloring_thresholds must be 'auto' or a list with exactly 4 thresholds.")
+
+        if confidence <= thresholds[0]:
+            return colors[0]
+        if confidence <= thresholds[1]:
+            return colors[1]
+        if confidence <= thresholds[2]:
+            return colors[2]
+        return colors[3]
 
     with open(output_gff_path, "w", encoding="utf-8") as handle:
         gff3_write_header(handle)
@@ -273,6 +301,11 @@ def write_predictions_to_gff(
                     "ID": tx_id,
                     "Parent": gene_id,
                     "lncRNA_probability": f"{pred.transcript_type_score:.6f}",
+                    "mRNA_probability": f"{(1.0 - float(pred.transcript_type_score)):.6f}",
+                    "exon_segmentation_confidence": f"{float(pred.exon_confidence_total):.6f}",
+                    "cds_segmentation_confidence": f"{float(pred.cds_confidence_total):.6f}",
+                    "segmentation_confidence": f"{float(pred.segmentation_confidence_total):.6f}",
+                    "color": _resolve_color(float(pred.segmentation_confidence_total)),
                 }
                 gff3_write_feature(
                     handle,
@@ -286,6 +319,7 @@ def write_predictions_to_gff(
                 )
 
                 for exon_idx, (start, end) in enumerate(sorted(pred.exons), start=1):
+                    exon_prob = pred.exon_mean_probs[exon_idx - 1] if exon_idx - 1 < len(pred.exon_mean_probs) else 0.0
                     gff3_write_feature(
                         handle,
                         seqid=pred.chrom,
@@ -294,24 +328,17 @@ def write_predictions_to_gff(
                         start0=start,
                         end0=end,
                         strand=pred.strand,
-                        attrs={"ID": f"{tx_id}.exon{exon_idx}", "Parent": tx_id},
-                    )
-
-                for intron_idx, (start, end) in enumerate(sorted(pred.introns), start=1):
-                    gff3_write_feature(
-                        handle,
-                        seqid=pred.chrom,
-                        source=source,
-                        ftype="intron",
-                        start0=start,
-                        end0=end,
-                        strand=pred.strand,
-                        attrs={"ID": f"{tx_id}.intron{intron_idx}", "Parent": tx_id},
+                        attrs={
+                            "ID": f"{tx_id}.exon{exon_idx}",
+                            "Parent": tx_id,
+                            "mean_probability": f"{float(exon_prob):.6f}",
+                        },
                     )
 
                 if pred.transcript_type == "mRNA" and pred.cds:
                     phase_map = compute_cds_phase_map(pred.cds, pred.strand)
                     for cds_idx, segment in enumerate(sorted(pred.cds), start=1):
+                        cds_prob = pred.cds_mean_probs[cds_idx - 1] if cds_idx - 1 < len(pred.cds_mean_probs) else 0.0
                         gff3_write_feature(
                             handle,
                             seqid=pred.chrom,
@@ -320,7 +347,11 @@ def write_predictions_to_gff(
                             start0=segment[0],
                             end0=segment[1],
                             strand=pred.strand,
-                            attrs={"ID": f"{tx_id}.cds{cds_idx}", "Parent": tx_id},
+                            attrs={
+                                "ID": f"{tx_id}.cds{cds_idx}",
+                                "Parent": tx_id,
+                                "mean_probability": f"{float(cds_prob):.6f}",
+                            },
                             phase=str(phase_map[segment]),
                         )
 
