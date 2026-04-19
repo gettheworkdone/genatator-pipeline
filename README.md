@@ -155,10 +155,19 @@ All four stage models run with **batch size 1**.
 
 * `transcript_type_threshold` — Threshold applied to the predicted `lnc_RNA` probability. Intervals at or above this value are labeled `lnc_RNA`; intervals below it are labeled `mRNA`.
 * `splice_filter` — Enables splice-motif filtering and terminal splice-boundary correction for exon and CDS segments.
-* `deduplicate` — Removes duplicate transcript predictions before GFF export. Duplicates are transcripts with identical interval boundaries and identical internal annotation structure (exons, introns, CDS). Default: `True`.
-* `intronic_filtering` — Drops an interval prediction when the first or the last nucleotide of the final segmentation argmax is classified as `intron`. This check is applied after forward/RC averaging (if enabled). Default: `False`.
-* `keep_longest_terminal_variant` — For transcripts grouped under the same gene, keeps only the longest transcript among variants that share the same internal exon structure and differ only by first-exon start and/or last-exon end. Default: `False`.
+* `deduplicate` — Removes duplicate final transcript predictions.
+* `intronic_filtering` — Drops transcript predictions whose segmentation starts or ends with the intron class.
+* `keep_longest_terminal_variant` — For overlapping transcripts with the same internal structure, keeps the longest terminal variant.
 * `use_cds_heuristic` — Replaces the predicted CDS with the exon-derived CDS heuristic used in the accompanying benchmark code. This option affects `mRNA` transcripts only.
+* `transcript_coloring_thresholds`:
+  * `"auto"` (default): compute min/max transcript segmentation confidence and split range into 4 equal bins
+  * custom list of exactly 4 thresholds: use these bins instead of auto mode
+
+Color map is hardcoded:
+* lowest quartile: `#66cc66` (light green)
+* second quartile: `#006400` (dark green)
+* third quartile: `#dcdcff` (light blue)
+* top quartile: `#0c0c78` (dark blue)
 
 ### General inference parameters
 
@@ -202,10 +211,14 @@ The final annotation contains:
 * `gene`
 * `mRNA` or `lnc_RNA`
 * `exon`
-* `intron`
 * `CDS` for `mRNA` transcripts only
 
 No CDS is emitted for `lnc_RNA` transcripts.
+
+GFF output now includes:
+* transcript attributes: `lncRNA_probability`, `mRNA_probability`, `exon_segmentation_confidence`, `cds_segmentation_confidence`, `segmentation_confidence`, `color`
+* exon and CDS attributes: `mean_probability`
+* intron features are not emitted in output GFF
 
 ## Default model repositories
 
@@ -229,10 +242,25 @@ No CDS is emitted for `lnc_RNA` transcripts.
 ## Dependencies
 
 Create the Conda environment from `environment.yml` before running the pipeline locally.
+For some GPU setups this simple flow may fail due CUDA/compiler/build-wheel specifics. In such cases, use the Docker-style staged installation shown below.
 
 ```bash
 conda env create -f environment.yml
 conda activate genatator_pipeline
+```
+
+If the simple setup fails, use the robust staged setup (same strategy as Docker startup):
+
+```bash
+conda env create -n genatator_pipeline -f docker/conda-core.yml
+conda activate genatator_pipeline
+
+pip install torch==2.2.2+cu121 torchvision==0.17.2+cu121 torchaudio==2.2.2+cu121 --index-url https://download.pytorch.org/whl/cu121
+pip install causal-conv1d==1.4.0 --no-build-isolation
+pip install mamba-ssm==2.2.2 --no-build-isolation
+pip install packaging==26.0 ninja==1.13.0 psutil==7.2.2
+pip install flash-attn==2.6.3 --no-build-isolation
+pip install -r docker/requirements.txt
 ```
 
 ## Output annotation
@@ -262,23 +290,6 @@ Example:
 ```bash
 curl -X POST "http://localhost:3000/api/genatator-pipeline/upload" -F "file=@genome.fasta"
 ```
-
-## Additional transcript confidence and coloring options
-
-- `transcript_coloring_thresholds`:
-  - `"auto"` (default): compute min/max transcript segmentation confidence and split range into 4 equal bins
-  - custom list of exactly 4 thresholds: use these bins instead of auto mode
-
-Color map is hardcoded:
-- lowest quartile: `#66cc66` (light green)
-- second quartile: `#006400` (dark green)
-- third quartile: `#dcdcff` (light blue)
-- top quartile: `#0c0c78` (dark blue)
-
-GFF output now includes:
-- transcript attributes: `lncRNA_probability`, `mRNA_probability`, `exon_segmentation_confidence`, `cds_segmentation_confidence`, `segmentation_confidence`, `color`
-- exon and CDS attributes: `mean_probability`
-- intron features are not emitted in output GFF
 
 Default postprocessing flags:
 - `deduplicate=True`
