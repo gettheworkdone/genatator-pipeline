@@ -42,6 +42,7 @@ try:
         write_intervals_to_bed,
     )
     from .gff_utils import (
+        group_transcripts_into_genes,
         infer_cds_with_benchmark_heuristic,
         parse_fasta_records,
         resolve_seqid_and_offset,
@@ -69,6 +70,7 @@ except ImportError:
         write_intervals_to_bed,
     )
     from gff_utils import (
+        group_transcripts_into_genes,
         infer_cds_with_benchmark_heuristic,
         parse_fasta_records,
         resolve_seqid_and_offset,
@@ -424,6 +426,7 @@ class GenatatorPipeline(Pipeline):
             ["Intragenic-"],
             default=5,
         )
+        self.segmentation_idx_intron = _intron_label_index(self.segmentation_label_names)
 
     def _sanitize_parameters(self, **kwargs):
         preprocess_kwargs = {}
