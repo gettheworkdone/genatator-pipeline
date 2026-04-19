@@ -214,6 +214,53 @@ def _deduplicate_predictions(predictions: list[TranscriptPrediction]) -> list[Tr
     return list(best_by_key.values())
 
 
+def _internal_structure_key(pred: TranscriptPrediction) -> tuple[Any, ...]:
+    exons = sorted(pred.exons)
+    if not exons:
+        return ("empty",)
+    if len(exons) == 1:
+        return ("single_exon",)
+    return (
+        len(exons),
+        int(exons[0][1]),
+        int(exons[-1][0]),
+        tuple((int(s), int(e)) for s, e in exons[1:-1]),
+    )
+
+
+def _filter_longest_terminal_variants(predictions: list[TranscriptPrediction]) -> list[TranscriptPrediction]:
+    by_gene: dict[tuple[str, str, str], list[TranscriptPrediction]] = {}
+    for pred in predictions:
+        key = (pred.chrom, pred.strand, pred.transcript_type)
+        by_gene.setdefault(key, []).append(pred)
+
+    kept: list[TranscriptPrediction] = []
+    for gene_key, gene_preds in by_gene.items():
+        del gene_key
+        gene_preds = sorted(gene_preds, key=lambda p: (p.start, p.end))
+        clusters: list[list[TranscriptPrediction]] = []
+        for pred in gene_preds:
+            if not clusters:
+                clusters.append([pred])
+                continue
+            cluster = clusters[-1]
+            current_end = max(int(x.end) for x in cluster)
+            if int(pred.start) <= current_end:
+                cluster.append(pred)
+            else:
+                clusters.append([pred])
+
+        for cluster in clusters:
+            best_by_structure: dict[tuple[Any, ...], TranscriptPrediction] = {}
+            for pred in cluster:
+                structure_key = _internal_structure_key(pred)
+                current = best_by_structure.get(structure_key)
+                if current is None or (int(pred.end) - int(pred.start)) > (int(current.end) - int(current.start)):
+                    best_by_structure[structure_key] = pred
+            kept.extend(best_by_structure.values())
+    return kept
+
+
 class GenatatorPipeline(Pipeline):
     """Custom Hugging Face pipeline for ab initio transcript discovery and annotation.
 
@@ -652,19 +699,12 @@ class GenatatorPipeline(Pipeline):
                     is_cds_binary=False,
                 )
 
-                if bool(params.get("intronic_filtering", False)):
+                if bool(params.get("intronic_filtering", True)):
                     labels = segmentation_result.labels_argmax
                     if len(labels) > 0 and (
                         int(labels[0]) == self.segmentation_idx_intron
                         or int(labels[-1]) == self.segmentation_idx_intron
                     ):
-                        self.logger.info(
-                            "Skipping interval %s:%d-%d (%s): intronic_filtering dropped prediction.",
-                            seqid,
-                            interval.start,
-                            interval.end,
-                            interval.strand,
-                        )
                         continue
 
                 exons = segmentation_result.exon_segments
@@ -759,16 +799,10 @@ class GenatatorPipeline(Pipeline):
         params = dict(self.runtime_defaults)
         params.update(model_outputs.get("runtime_params", {}))
 
-        if bool(params.get("keep_longest_terminal_variant", False)):
+        if bool(params.get("keep_longest_terminal_variant", True)):
             predictions = _filter_longest_terminal_variants(predictions)
 
         if bool(params.get("deduplicate", True)):
-            predictions = _deduplicate_predictions(predictions)
-
-        if bool(self.runtime_defaults.get("deduplicate", True)):
-            predictions = _deduplicate_predictions(predictions)
-
-        if bool(self.runtime_defaults.get("deduplicate", True)):
             before = len(predictions)
             predictions = _deduplicate_predictions(predictions)
             self.logger.info("Deduplication reduced transcripts from %d to %d", before, len(predictions))
@@ -780,7 +814,7 @@ class GenatatorPipeline(Pipeline):
             predictions=predictions,
             output_gff_path=output_gff_path,
             source="GENATATOR-PIPELINE",
-            transcript_coloring_thresholds=self.runtime_defaults.get("transcript_coloring_thresholds", "auto"),
+            transcript_coloring_thresholds=params.get("transcript_coloring_thresholds", "auto"),
         )
         self.logger.info("Wrote %d transcript annotations to %s", len(predictions), output_gff_path)
         return output_gff_path

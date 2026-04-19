@@ -279,3 +279,11 @@ GFF output now includes:
 - transcript attributes: `lncRNA_probability`, `mRNA_probability`, `exon_segmentation_confidence`, `cds_segmentation_confidence`, `segmentation_confidence`, `color`
 - exon and CDS attributes: `mean_probability`
 - intron features are not emitted in output GFF
+
+Default postprocessing flags:
+- `deduplicate=True`
+- `intronic_filtering=True`
+- `keep_longest_terminal_variant=True`
+- `use_cds_heuristic=True`
+
+Coloring is applied on the **final** transcript set after filtering/heuristics (`intronic_filtering`, `keep_longest_terminal_variant`, `deduplicate`, CDS heuristic effects).
