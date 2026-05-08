@@ -53,6 +53,7 @@ class GenatatorPipelineConfig(PretrainedConfig):
         deduplicate: bool = True,
         intronic_filtering: bool = True,
         keep_longest_terminal_variant: bool = True,
+        predict_internal_structure: bool = True,
         transcript_coloring_thresholds: str | list[float] = "auto",
         use_cds_heuristic: bool = True,
         save_intermediate_files: bool = False,
@@ -147,6 +148,7 @@ class GenatatorPipelineConfig(PretrainedConfig):
         self.deduplicate = bool(deduplicate)
         self.intronic_filtering = bool(intronic_filtering)
         self.keep_longest_terminal_variant = bool(keep_longest_terminal_variant)
+        self.predict_internal_structure = bool(predict_internal_structure)
         self.transcript_coloring_thresholds = transcript_coloring_thresholds
         self.use_cds_heuristic = bool(use_cds_heuristic)
         self.save_intermediate_files = bool(save_intermediate_files)
@@ -249,6 +251,7 @@ class GenatatorPipelineConfig(PretrainedConfig):
             "deduplicate": self.deduplicate,
             "intronic_filtering": self.intronic_filtering,
             "keep_longest_terminal_variant": self.keep_longest_terminal_variant,
+            "predict_internal_structure": self.predict_internal_structure,
             "transcript_coloring_thresholds": self.transcript_coloring_thresholds,
             "use_cds_heuristic": self.use_cds_heuristic,
             "save_intermediate_files": self.save_intermediate_files,

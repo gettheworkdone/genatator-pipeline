@@ -634,6 +634,13 @@ class GenatatorPipeline(Pipeline):
                     filtered=filtered,
                 )
 
+            if not bool(params.get("predict_internal_structure", True)):
+                self.logger.info(
+                    "predict_internal_structure=False: stopping after edge/region stages for record %s.",
+                    seqid,
+                )
+                continue
+
             for interval_idx, interval in enumerate(tqdm(filtered, desc=f"{seqid} transcripts", leave=False), start=1):
                 interval_sequence = sequence[interval.start : interval.end]
                 if not interval_sequence:
@@ -798,6 +805,12 @@ class GenatatorPipeline(Pipeline):
         predictions = model_outputs["predictions"]
         params = dict(self.runtime_defaults)
         params.update(model_outputs.get("runtime_params", {}))
+
+        if not bool(params.get("predict_internal_structure", True)):
+            self.logger.info(
+                "predict_internal_structure=False: no transcript segmentation requested; skipping GFF generation."
+            )
+            return ""
 
         if bool(params.get("keep_longest_terminal_variant", True)):
             predictions = _filter_longest_terminal_variants(predictions)
