@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import gc
 from pathlib import Path
 from typing import Any, Optional
 
@@ -138,6 +139,21 @@ def _resolve_model_dtype(
     if device.type == "cpu" and resolved in {torch.float16, torch.bfloat16}:
         return torch.float32
     return resolved
+
+
+def _normalize_requested_dtype(dtype_value: Optional[str | torch.dtype]) -> Optional[str | torch.dtype]:
+    if dtype_value is None:
+        return None
+    if isinstance(dtype_value, str) and dtype_value.strip() == "":
+        return None
+    return dtype_value
+
+
+def _release_gpu_memory(device: torch.device) -> None:
+    gc.collect()
+    if device.type == "cuda" and torch.cuda.is_available():
+        torch.cuda.synchronize(device)
+        torch.cuda.empty_cache()
 
 
 
@@ -302,7 +318,11 @@ class GenatatorPipeline(Pipeline):
                 init_overrides.setdefault(key, bool(legacy_use_reverse_complement))
         self.runtime_defaults.update(init_overrides)
 
-        effective_dtype = dtype if dtype is not None else torch_dtype
+        normalized_dtype = _normalize_requested_dtype(dtype)
+        normalized_torch_dtype = _normalize_requested_dtype(torch_dtype)
+        effective_dtype = normalized_dtype if normalized_dtype is not None else normalized_torch_dtype
+        if effective_dtype is None:
+            effective_dtype = self.runtime_defaults.get("torch_dtype", "float32")
         if effective_dtype is not None:
             self.runtime_defaults["torch_dtype"] = effective_dtype
 
@@ -560,6 +580,8 @@ class GenatatorPipeline(Pipeline):
                 logger=self.logger,
                 chunk_log_every=int(params["chunk_log_every"]),
             )
+            edge_tracks = np.asarray(edge_tracks, dtype=np.float32)
+            _release_gpu_memory(self.device)
 
             region_tracks = infer_token_classification_tracks_with_rc(
                 sequence=sequence,
@@ -581,6 +603,8 @@ class GenatatorPipeline(Pipeline):
                 logger=self.logger,
                 chunk_log_every=int(params["chunk_log_every"]),
             )
+            region_tracks = np.asarray(region_tracks, dtype=np.float32)
+            _release_gpu_memory(self.device)
 
             X = np.array(
                 [
@@ -670,6 +694,7 @@ class GenatatorPipeline(Pipeline):
                     logger=self.logger,
                     apply_sigmoid=bool(params["transcript_type_apply_sigmoid"]),
                 )
+                _release_gpu_memory(self.device)
                 transcript_type = (
                     "lnc_RNA"
                     if transcript_type_score >= float(params["transcript_type_threshold"])
@@ -697,6 +722,8 @@ class GenatatorPipeline(Pipeline):
                     progress_desc=f"{seqid} segmentation",
                     apply_sigmoid=bool(params["segmentation_apply_sigmoid"]),
                 )
+                segmentation_tracks = np.asarray(segmentation_tracks, dtype=np.float32)
+                _release_gpu_memory(self.device)
                 segmentation_result = build_segmentation_result(
                     interval_start=interval.start,
                     sequence=interval_sequence,
@@ -793,6 +820,7 @@ class GenatatorPipeline(Pipeline):
                         len(introns),
                         len(cds),
                     )
+                _release_gpu_memory(self.device)
 
         return {
             "fasta_path": fasta_path,
