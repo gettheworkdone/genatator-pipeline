@@ -146,6 +146,8 @@ def _normalize_requested_dtype(dtype_value: Optional[str | torch.dtype]) -> Opti
         return None
     if isinstance(dtype_value, str) and dtype_value.strip() == "":
         return None
+    if isinstance(dtype_value, str) and dtype_value.strip().lower() == "auto":
+        return None
     return dtype_value
 
 

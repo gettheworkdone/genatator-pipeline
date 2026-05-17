@@ -39,7 +39,6 @@
   "splice_filter": true,
   "use_cds_heuristic": true,
   "shift": null,
-  "torch_dtype": "float32",
   "edge_average_token_length": 9.0,
   "region_average_token_length": 9.0,
   "edge_max_genomic_chunk_ratio": 1.5,

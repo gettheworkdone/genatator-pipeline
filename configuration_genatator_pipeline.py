@@ -157,7 +157,7 @@ class GenatatorPipelineConfig(PretrainedConfig):
         self.pairing_progress_every = int(pairing_progress_every)
         self.chunk_log_every = int(chunk_log_every)
         self.shift = shift
-        effective_dtype = dtype if torch_dtype in {None, "", "None"} else torch_dtype
+        effective_dtype = dtype if torch_dtype in {None, "", "None", "auto", "AUTO"} else torch_dtype
         self.torch_dtype = str(effective_dtype)
         self.dtype = str(effective_dtype)
 
@@ -263,5 +263,4 @@ class GenatatorPipelineConfig(PretrainedConfig):
             "chunk_log_every": self.chunk_log_every,
             "shift": self.shift,
             "dtype": self.dtype,
-            "torch_dtype": self.torch_dtype,
         }
