@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import gc
 from pathlib import Path
 from typing import Any, Optional
 
@@ -138,6 +139,21 @@ def _resolve_model_dtype(
     return resolved
 
 
+def _normalize_requested_dtype(dtype_value: Optional[str | torch.dtype]) -> Optional[str | torch.dtype]:
+    if dtype_value is None:
+        return None
+    if isinstance(dtype_value, str) and dtype_value.strip() == "":
+        return None
+    return dtype_value
+
+
+def _release_gpu_memory(device: torch.device) -> None:
+    gc.collect()
+    if device.type == "cuda" and torch.cuda.is_available():
+        torch.cuda.synchronize(device)
+        torch.cuda.empty_cache()
+
+
 
 def _label_index(label_names: list[str], candidates: list[str], default: Optional[int] = None) -> int:
     normalized = {
@@ -161,6 +177,102 @@ def _safe_record_stem(name: str) -> str:
         else:
             allowed.append("_")
     return "".join(allowed)
+
+
+def _segment_mean_probabilities(
+    segments: list[tuple[int, int]],
+    track: np.ndarray,
+    interval_start: int,
+) -> list[float]:
+    if len(track) == 0:
+        return [0.0 for _ in segments]
+    probs: list[float] = []
+    for start, end in segments:
+        rel_start = max(0, int(start) - int(interval_start))
+        rel_end = min(len(track), int(end) - int(interval_start))
+        if rel_end <= rel_start:
+            probs.append(0.0)
+            continue
+        probs.append(float(np.mean(track[rel_start:rel_end])))
+    return probs
+
+
+def _mean_or_zero(values: list[float]) -> float:
+    return float(np.mean(values)) if values else 0.0
+
+
+def _intron_label_index(label_names: list[str]) -> int:
+    return _label_index(label_names, ["intron"], default=2)
+
+
+def _deduplicate_predictions(predictions: list[TranscriptPrediction]) -> list[TranscriptPrediction]:
+    best_by_key: dict[tuple[Any, ...], TranscriptPrediction] = {}
+    for pred in predictions:
+        key = (
+            pred.chrom,
+            int(pred.start),
+            int(pred.end),
+            pred.strand,
+            tuple(sorted(pred.exons)),
+            tuple(sorted(pred.introns)),
+            tuple(sorted(pred.cds)),
+        )
+        current = best_by_key.get(key)
+        if current is None:
+            best_by_key[key] = pred
+            continue
+        current_score = (float(current.segmentation_confidence_total), float(current.transcript_type_score))
+        new_score = (float(pred.segmentation_confidence_total), float(pred.transcript_type_score))
+        if new_score > current_score:
+            best_by_key[key] = pred
+    return list(best_by_key.values())
+
+
+def _internal_structure_key(pred: TranscriptPrediction) -> tuple[Any, ...]:
+    exons = sorted(pred.exons)
+    if not exons:
+        return ("empty",)
+    if len(exons) == 1:
+        return ("single_exon",)
+    return (
+        len(exons),
+        int(exons[0][1]),
+        int(exons[-1][0]),
+        tuple((int(s), int(e)) for s, e in exons[1:-1]),
+    )
+
+
+def _filter_longest_terminal_variants(predictions: list[TranscriptPrediction]) -> list[TranscriptPrediction]:
+    by_gene: dict[tuple[str, str, str], list[TranscriptPrediction]] = {}
+    for pred in predictions:
+        key = (pred.chrom, pred.strand, pred.transcript_type)
+        by_gene.setdefault(key, []).append(pred)
+
+    kept: list[TranscriptPrediction] = []
+    for gene_key, gene_preds in by_gene.items():
+        del gene_key
+        gene_preds = sorted(gene_preds, key=lambda p: (p.start, p.end))
+        clusters: list[list[TranscriptPrediction]] = []
+        for pred in gene_preds:
+            if not clusters:
+                clusters.append([pred])
+                continue
+            cluster = clusters[-1]
+            current_end = max(int(x.end) for x in cluster)
+            if int(pred.start) <= current_end:
+                cluster.append(pred)
+            else:
+                clusters.append([pred])
+
+        for cluster in clusters:
+            best_by_structure: dict[tuple[Any, ...], TranscriptPrediction] = {}
+            for pred in cluster:
+                structure_key = _internal_structure_key(pred)
+                current = best_by_structure.get(structure_key)
+                if current is None or (int(pred.end) - int(pred.start)) > (int(current.end) - int(current.start)):
+                    best_by_structure[structure_key] = pred
+            kept.extend(best_by_structure.values())
+    return kept
 
 
 class GenatatorPipeline(Pipeline):
@@ -204,8 +316,15 @@ class GenatatorPipeline(Pipeline):
                 init_overrides.setdefault(key, bool(legacy_use_reverse_complement))
         self.runtime_defaults.update(init_overrides)
 
-        effective_dtype = dtype if dtype is not None else torch_dtype
+        normalized_dtype = _normalize_requested_dtype(dtype)
+        normalized_torch_dtype = _normalize_requested_dtype(torch_dtype)
+        effective_dtype = normalized_dtype if normalized_dtype is not None else normalized_torch_dtype
+        if effective_dtype is None:
+            # Strict default requirement: if user did not explicitly pass dtype/torch_dtype,
+            # force float32 regardless of remote config defaults.
+            effective_dtype = "float32"
         if effective_dtype is not None:
+            self.runtime_defaults["dtype"] = effective_dtype
             self.runtime_defaults["torch_dtype"] = effective_dtype
 
         super().__init__(
@@ -224,7 +343,7 @@ class GenatatorPipeline(Pipeline):
         )
 
         self.submodel_dtype = _resolve_model_dtype(
-            self.runtime_defaults.get("torch_dtype"),
+            self.runtime_defaults.get("dtype", self.runtime_defaults.get("torch_dtype")),
             self.device,
         )
 
@@ -241,7 +360,7 @@ class GenatatorPipeline(Pipeline):
         self.edge_model = AutoModelForTokenClassification.from_pretrained(
             self.runtime_defaults["edge_model_path"],
             trust_remote_code=True,
-            torch_dtype=self.submodel_dtype,
+            dtype=self.submodel_dtype,
         ).to(self.device)
         self.edge_model.eval()
         self.edge_label_names = resolve_label_names(self.edge_model.config, EDGE_LABELS_DEFAULT)
@@ -256,7 +375,7 @@ class GenatatorPipeline(Pipeline):
         self.region_model = AutoModelForTokenClassification.from_pretrained(
             self.runtime_defaults["region_model_path"],
             trust_remote_code=True,
-            torch_dtype=self.submodel_dtype,
+            dtype=self.submodel_dtype,
         ).to(self.device)
         self.region_model.eval()
         self.region_label_names = resolve_label_names(self.region_model.config, REGION_LABELS_DEFAULT)
@@ -285,7 +404,7 @@ class GenatatorPipeline(Pipeline):
         self.transcript_type_model = AutoModelForSequenceClassification.from_pretrained(
             self.runtime_defaults["transcript_type_model_path"],
             trust_remote_code=True,
-            torch_dtype=self.submodel_dtype,
+            dtype=self.submodel_dtype,
         ).to(self.device)
         self.transcript_type_model.eval()
 
@@ -301,7 +420,7 @@ class GenatatorPipeline(Pipeline):
         self.segmentation_model = AutoModelForTokenClassification.from_pretrained(
             self.runtime_defaults["segmentation_model_path"],
             trust_remote_code=True,
-            torch_dtype=self.submodel_dtype,
+            dtype=self.submodel_dtype,
         ).to(self.device)
         self.segmentation_model.eval()
         self.segmentation_label_names = resolve_label_names(
@@ -310,6 +429,9 @@ class GenatatorPipeline(Pipeline):
         )
         self.logger.info("Segmentation label names: %s", self.segmentation_label_names)
         self.logger.info("Submodel dtype resolved to %s", self.submodel_dtype)
+        self.segmentation_idx_exon = _label_index(self.segmentation_label_names, ["exon"])
+        self.segmentation_idx_cds = _label_index(self.segmentation_label_names, ["CDS", "cds"])
+        self.segmentation_idx_intron = _intron_label_index(self.segmentation_label_names)
 
         self.edge_idx_tss_plus = _label_index(self.edge_label_names, ["TSS+"], default=0)
         self.edge_idx_tss_minus = _label_index(self.edge_label_names, ["TSS-"], default=1)
@@ -458,6 +580,8 @@ class GenatatorPipeline(Pipeline):
                 logger=self.logger,
                 chunk_log_every=int(params["chunk_log_every"]),
             )
+            edge_tracks = np.asarray(edge_tracks, dtype=np.float32)
+            _release_gpu_memory(self.device)
 
             region_tracks = infer_token_classification_tracks_with_rc(
                 sequence=sequence,
@@ -479,6 +603,8 @@ class GenatatorPipeline(Pipeline):
                 logger=self.logger,
                 chunk_log_every=int(params["chunk_log_every"]),
             )
+            region_tracks = np.asarray(region_tracks, dtype=np.float32)
+            _release_gpu_memory(self.device)
 
             X = np.array(
                 [
@@ -532,6 +658,13 @@ class GenatatorPipeline(Pipeline):
                     filtered=filtered,
                 )
 
+            if not bool(params.get("predict_internal_structure", True)):
+                self.logger.info(
+                    "predict_internal_structure=False: stopping after edge/region stages for record %s.",
+                    seqid,
+                )
+                continue
+
             for interval_idx, interval in enumerate(tqdm(filtered, desc=f"{seqid} transcripts", leave=False), start=1):
                 interval_sequence = sequence[interval.start : interval.end]
                 if not interval_sequence:
@@ -561,6 +694,7 @@ class GenatatorPipeline(Pipeline):
                     logger=self.logger,
                     apply_sigmoid=bool(params["transcript_type_apply_sigmoid"]),
                 )
+                _release_gpu_memory(self.device)
                 transcript_type = (
                     "lnc_RNA"
                     if transcript_type_score >= float(params["transcript_type_threshold"])
@@ -588,6 +722,8 @@ class GenatatorPipeline(Pipeline):
                     progress_desc=f"{seqid} segmentation",
                     apply_sigmoid=bool(params["segmentation_apply_sigmoid"]),
                 )
+                segmentation_tracks = np.asarray(segmentation_tracks, dtype=np.float32)
+                _release_gpu_memory(self.device)
                 segmentation_result = build_segmentation_result(
                     interval_start=interval.start,
                     sequence=interval_sequence,
@@ -596,6 +732,14 @@ class GenatatorPipeline(Pipeline):
                     splice_filter=bool(params["splice_filter"]),
                     is_cds_binary=False,
                 )
+
+                if bool(params.get("intronic_filtering", True)):
+                    labels = segmentation_result.labels_argmax
+                    if len(labels) > 0 and (
+                        int(labels[0]) == self.segmentation_idx_intron
+                        or int(labels[-1]) == self.segmentation_idx_intron
+                    ):
+                        continue
 
                 exons = segmentation_result.exon_segments
                 if interval_idx <= 10 or interval_idx % 100 == 0:
@@ -628,6 +772,22 @@ class GenatatorPipeline(Pipeline):
                 else:
                     cds = []
 
+                exon_mean_probs = _segment_mean_probabilities(
+                    exons,
+                    segmentation_result.tracks[self.segmentation_idx_exon],
+                    interval.start,
+                )
+                cds_mean_probs = _segment_mean_probabilities(
+                    cds,
+                    segmentation_result.tracks[self.segmentation_idx_cds],
+                    interval.start,
+                )
+                exon_confidence_total = _mean_or_zero(exon_mean_probs)
+                cds_confidence_total = _mean_or_zero(cds_mean_probs)
+                segmentation_confidence_total = (
+                    cds_confidence_total if transcript_type == "mRNA" and cds_mean_probs else exon_confidence_total
+                )
+
                 introns = build_introns_from_exons(exons)
 
                 def _shift_segments(segments):
@@ -645,6 +805,11 @@ class GenatatorPipeline(Pipeline):
                         introns=_shift_segments(introns),
                         cds=_shift_segments(cds),
                         sequence_name=record.id,
+                        exon_mean_probs=exon_mean_probs,
+                        cds_mean_probs=cds_mean_probs,
+                        exon_confidence_total=exon_confidence_total,
+                        cds_confidence_total=cds_confidence_total,
+                        segmentation_confidence_total=segmentation_confidence_total,
                     )
                 )
                 if interval_idx <= 10 or interval_idx % 100 == 0:
@@ -655,15 +820,33 @@ class GenatatorPipeline(Pipeline):
                         len(introns),
                         len(cds),
                     )
+                _release_gpu_memory(self.device)
 
         return {
             "fasta_path": fasta_path,
             "predictions": predictions,
+            "runtime_params": params,
         }
 
     def postprocess(self, model_outputs: dict[str, Any], output_gff_path: Optional[str] = None) -> str:
         fasta_path = model_outputs["fasta_path"]
         predictions = model_outputs["predictions"]
+        params = dict(self.runtime_defaults)
+        params.update(model_outputs.get("runtime_params", {}))
+
+        if not bool(params.get("predict_internal_structure", True)):
+            self.logger.info(
+                "predict_internal_structure=False: no transcript segmentation requested; skipping GFF generation."
+            )
+            return ""
+
+        if bool(params.get("keep_longest_terminal_variant", True)):
+            predictions = _filter_longest_terminal_variants(predictions)
+
+        if bool(params.get("deduplicate", True)):
+            before = len(predictions)
+            predictions = _deduplicate_predictions(predictions)
+            self.logger.info("Deduplication reduced transcripts from %d to %d", before, len(predictions))
 
         if output_gff_path is None:
             output_gff_path = str(Path(fasta_path).with_suffix(".gff"))
@@ -672,6 +855,7 @@ class GenatatorPipeline(Pipeline):
             predictions=predictions,
             output_gff_path=output_gff_path,
             source="GENATATOR-PIPELINE",
+            transcript_coloring_thresholds=params.get("transcript_coloring_thresholds", "auto"),
         )
         self.logger.info("Wrote %d transcript annotations to %s", len(predictions), output_gff_path)
         return output_gff_path

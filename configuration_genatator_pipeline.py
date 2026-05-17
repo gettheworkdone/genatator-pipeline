@@ -50,13 +50,19 @@ class GenatatorPipelineConfig(PretrainedConfig):
         zero_fraction_drop_threshold: float = 0.01,
         transcript_type_threshold: float = 0.5,
         splice_filter: bool = True,
+        deduplicate: bool = True,
+        intronic_filtering: bool = True,
+        keep_longest_terminal_variant: bool = True,
+        predict_internal_structure: bool = True,
+        transcript_coloring_thresholds: str | list[float] = "auto",
         use_cds_heuristic: bool = True,
         save_intermediate_files: bool = False,
         intermediate_output_dir: Optional[str] = None,
         pairing_progress_every: int = 1000,
         chunk_log_every: int = 1000,
         shift: Optional[str | int] = None,
-        torch_dtype: str = "float32",
+        dtype: str = "float32",
+        torch_dtype: Optional[str] = None,
         **kwargs: Any,
     ) -> None:
         edge_context_length = kwargs.pop("edge_window_size", edge_context_length)
@@ -140,13 +146,20 @@ class GenatatorPipelineConfig(PretrainedConfig):
         self.zero_fraction_drop_threshold = float(zero_fraction_drop_threshold)
         self.transcript_type_threshold = float(transcript_type_threshold)
         self.splice_filter = bool(splice_filter)
+        self.deduplicate = bool(deduplicate)
+        self.intronic_filtering = bool(intronic_filtering)
+        self.keep_longest_terminal_variant = bool(keep_longest_terminal_variant)
+        self.predict_internal_structure = bool(predict_internal_structure)
+        self.transcript_coloring_thresholds = transcript_coloring_thresholds
         self.use_cds_heuristic = bool(use_cds_heuristic)
         self.save_intermediate_files = bool(save_intermediate_files)
         self.intermediate_output_dir = None if intermediate_output_dir in {None, ""} else str(intermediate_output_dir)
         self.pairing_progress_every = int(pairing_progress_every)
         self.chunk_log_every = int(chunk_log_every)
         self.shift = shift
-        self.torch_dtype = str(torch_dtype)
+        effective_dtype = dtype if torch_dtype in {None, "", "None"} else torch_dtype
+        self.torch_dtype = str(effective_dtype)
+        self.dtype = str(effective_dtype)
 
         self._validate()
         super().__init__(**kwargs)
@@ -238,11 +251,17 @@ class GenatatorPipelineConfig(PretrainedConfig):
             "zero_fraction_drop_threshold": self.zero_fraction_drop_threshold,
             "transcript_type_threshold": self.transcript_type_threshold,
             "splice_filter": self.splice_filter,
+            "deduplicate": self.deduplicate,
+            "intronic_filtering": self.intronic_filtering,
+            "keep_longest_terminal_variant": self.keep_longest_terminal_variant,
+            "predict_internal_structure": self.predict_internal_structure,
+            "transcript_coloring_thresholds": self.transcript_coloring_thresholds,
             "use_cds_heuristic": self.use_cds_heuristic,
             "save_intermediate_files": self.save_intermediate_files,
             "intermediate_output_dir": self.intermediate_output_dir,
             "pairing_progress_every": self.pairing_progress_every,
             "chunk_log_every": self.chunk_log_every,
             "shift": self.shift,
+            "dtype": self.dtype,
             "torch_dtype": self.torch_dtype,
         }
