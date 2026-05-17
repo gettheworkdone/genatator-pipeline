@@ -61,7 +61,8 @@ class GenatatorPipelineConfig(PretrainedConfig):
         pairing_progress_every: int = 1000,
         chunk_log_every: int = 1000,
         shift: Optional[str | int] = None,
-        torch_dtype: str = "float32",
+        dtype: str = "float32",
+        torch_dtype: Optional[str] = None,
         **kwargs: Any,
     ) -> None:
         edge_context_length = kwargs.pop("edge_window_size", edge_context_length)
@@ -156,7 +157,9 @@ class GenatatorPipelineConfig(PretrainedConfig):
         self.pairing_progress_every = int(pairing_progress_every)
         self.chunk_log_every = int(chunk_log_every)
         self.shift = shift
-        self.torch_dtype = str(torch_dtype)
+        effective_dtype = dtype if torch_dtype in {None, "", "None"} else torch_dtype
+        self.torch_dtype = str(effective_dtype)
+        self.dtype = str(effective_dtype)
 
         self._validate()
         super().__init__(**kwargs)
@@ -259,5 +262,6 @@ class GenatatorPipelineConfig(PretrainedConfig):
             "pairing_progress_every": self.pairing_progress_every,
             "chunk_log_every": self.chunk_log_every,
             "shift": self.shift,
+            "dtype": self.dtype,
             "torch_dtype": self.torch_dtype,
         }

@@ -326,6 +326,7 @@ class GenatatorPipeline(Pipeline):
             # force float32 regardless of remote config defaults.
             effective_dtype = "float32"
         if effective_dtype is not None:
+            self.runtime_defaults["dtype"] = effective_dtype
             self.runtime_defaults["torch_dtype"] = effective_dtype
 
         super().__init__(
@@ -344,7 +345,7 @@ class GenatatorPipeline(Pipeline):
         )
 
         self.submodel_dtype = _resolve_model_dtype(
-            self.runtime_defaults.get("torch_dtype"),
+            self.runtime_defaults.get("dtype", self.runtime_defaults.get("torch_dtype")),
             self.device,
         )
 
@@ -361,7 +362,7 @@ class GenatatorPipeline(Pipeline):
         self.edge_model = AutoModelForTokenClassification.from_pretrained(
             self.runtime_defaults["edge_model_path"],
             trust_remote_code=True,
-            torch_dtype=self.submodel_dtype,
+            dtype=self.submodel_dtype,
         ).to(self.device)
         self.edge_model.eval()
         self.edge_label_names = resolve_label_names(self.edge_model.config, EDGE_LABELS_DEFAULT)
@@ -376,7 +377,7 @@ class GenatatorPipeline(Pipeline):
         self.region_model = AutoModelForTokenClassification.from_pretrained(
             self.runtime_defaults["region_model_path"],
             trust_remote_code=True,
-            torch_dtype=self.submodel_dtype,
+            dtype=self.submodel_dtype,
         ).to(self.device)
         self.region_model.eval()
         self.region_label_names = resolve_label_names(self.region_model.config, REGION_LABELS_DEFAULT)
@@ -405,7 +406,7 @@ class GenatatorPipeline(Pipeline):
         self.transcript_type_model = AutoModelForSequenceClassification.from_pretrained(
             self.runtime_defaults["transcript_type_model_path"],
             trust_remote_code=True,
-            torch_dtype=self.submodel_dtype,
+            dtype=self.submodel_dtype,
         ).to(self.device)
         self.transcript_type_model.eval()
 
@@ -421,7 +422,7 @@ class GenatatorPipeline(Pipeline):
         self.segmentation_model = AutoModelForTokenClassification.from_pretrained(
             self.runtime_defaults["segmentation_model_path"],
             trust_remote_code=True,
-            torch_dtype=self.submodel_dtype,
+            dtype=self.submodel_dtype,
         ).to(self.device)
         self.segmentation_model.eval()
         self.segmentation_label_names = resolve_label_names(
