@@ -322,7 +322,9 @@ class GenatatorPipeline(Pipeline):
         normalized_torch_dtype = _normalize_requested_dtype(torch_dtype)
         effective_dtype = normalized_dtype if normalized_dtype is not None else normalized_torch_dtype
         if effective_dtype is None:
-            effective_dtype = self.runtime_defaults.get("torch_dtype", "float32")
+            # Strict default requirement: if user did not explicitly pass dtype/torch_dtype,
+            # force float32 regardless of remote config defaults.
+            effective_dtype = "float32"
         if effective_dtype is not None:
             self.runtime_defaults["torch_dtype"] = effective_dtype
 
